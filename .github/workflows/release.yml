@@ -36,13 +36,13 @@ jobs:
           echo "New version: $new_tag"
           echo "new_tag=$new_tag" >> $GITHUB_ENV
 
-      # Build the Go app for macOS
+      # Build the Go app for macOS (64-bit)
       - name: Build macOS binary
         run: |
           GOOS=darwin GOARCH=amd64 go build -o Infor-test-mac
 
-      # Build the Go app for Windows
-      - name: Build Windows binary
+      # Build the Go app for Windows (64-bit)
+      - name: Build Windows 64-bit binary
         run: |
           GOOS=windows GOARCH=amd64 go build -o Infor-test-windows.exe
 
@@ -77,8 +77,8 @@ jobs:
           asset_name: Infor-test-mac
           asset_content_type: application/octet-stream
 
-      # Upload the Windows binary to the release
-      - name: Upload Windows binary
+      # Upload the Windows 64-bit binary to the release
+      - name: Upload Windows 64-bit binary
         uses: actions/upload-release-asset@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
