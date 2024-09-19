@@ -86,3 +86,18 @@ Form Data: grant_type=password&scope=&username=******&password=******
 Access Token: ******
 ✅ Connection successful! Access token obtained successfully.
 ```
+## Debug Mode
+
+You can run the application with detailed debug output using the `--debug` flag. This will provide more detailed logging, including HTTP requests and responses.
+
+### Usage:
+
+```bash
+./Infor-test INFOR-DOC2.ionapi --debug
+```
+
+### Without Debug:
+If you don't provide the `--debug` flag, the application will only print high-level status messages such as connection success or failure.
+
+### With Debug:
+When running the application with `--debug`, you'll see detailed logs including the raw API responses, requests, and token details.
