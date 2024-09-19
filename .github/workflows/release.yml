@@ -25,15 +25,14 @@ jobs:
       - name: Install Git
         run: sudo apt-get install git -y
 
-      # Determine the next version
-      - name: Determine version
+      # Determine the next version with timestamp or commit hash
+      - name: Generate version with commit hash
         id: versioning
         run: |
-          latest_tag=$(git describe --tags --abbrev=0 || echo "v0.0.0")
-          echo "Latest tag: $latest_tag"
-          # Strip "v" prefix and increment the patch number
-          version=$(echo $latest_tag | awk -F. '{$NF += 1;} 1' | sed 's/ /./g')
-          new_tag="v$version"
+          # Generate version based on the latest tag, commit hash, and current time
+          latest_tag=$(git describe --tags --abbrev=0 || echo "v1.0.0")
+          timestamp=$(date +'%Y%m%d%H%M%S')
+          new_tag="${latest_tag}-${timestamp}"
           echo "New version: $new_tag"
           echo "new_tag=$new_tag" >> $GITHUB_ENV
 
@@ -47,7 +46,15 @@ jobs:
         run: |
           GOOS=windows GOARCH=amd64 go build -o Infor-test-windows.exe
 
-      # Create a GitHub release
+      # Create a new Git tag for the version
+      - name: Create Git tag
+        run: |
+          git config user.name "GitHub Actions"
+          git config user.email "actions@github.com"
+          git tag ${{ env.new_tag }}
+          git push origin ${{ env.new_tag }}
+
+      # Create a GitHub release with the new tag
       - name: Create Release
         id: create_release
         uses: actions/create-release@v1
@@ -59,7 +66,7 @@ jobs:
           draft: false
           prerelease: false
 
-      # Upload the binaries to the release
+      # Upload the macOS binary to the release
       - name: Upload macOS binary
         uses: actions/upload-release-asset@v1
         env:
@@ -70,6 +77,7 @@ jobs:
           asset_name: Infor-test-mac
           asset_content_type: application/octet-stream
 
+      # Upload the Windows binary to the release
       - name: Upload Windows binary
         uses: actions/upload-release-asset@v1
         env:
