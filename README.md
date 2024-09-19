@@ -34,7 +34,7 @@ The `.ionapi` file is a JSON file that contains the service account credentials 
   "saak": "Your-Service-Account-Access-Key",
   "sask": "Your-Service-Account-Secret-Key"
 }
-
+```
 	•	ci: Client ID
 	•	cs: Client Secret
 	•	iu: Base URL for calling the ION API Gateway
