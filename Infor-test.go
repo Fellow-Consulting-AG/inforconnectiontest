@@ -9,6 +9,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"time"
 )
 
 // IonAPI structure to map the fields from your .ionapi file
@@ -19,6 +20,7 @@ type IonAPI struct {
 	TokenPath    string `json:"ot"`   // Path to form the token URL
 	Username     string `json:"saak"` // Use `saak` as the username
 	Password     string `json:"sask"` // Use `sask` as the password
+	IonBaseURL   string `json:"iu"`   // Base URL for ION API
 }
 
 // Construct the full token URL by combining the Base URL and the token path
@@ -36,6 +38,17 @@ func main() {
 	if err != nil {
 		log.Fatalf("Failed to load ionapi file: %v", err)
 	}
+
+	// Check connectivity to both the ION API Gateway and Authorization Server
+	if !checkConnectivity(ionAPI.IonBaseURL, "ION API Gateway") {
+		log.Fatalf("❌ Cannot connect to ION API Gateway (%s)", ionAPI.IonBaseURL)
+	}
+	//if !checkConnectivity(ionAPI.TokenBaseURL, "Authorization Server") {
+	//	log.Fatalf("❌ Cannot connect to Authorization Server (%s)", ionAPI.TokenBaseURL)
+	//}
+
+	// Print connectivity success
+	fmt.Println("✅ Connection possible to connect to ION API Gateway")
 
 	// Debugging: Print out all fields from the .ionapi file to check if they're loaded correctly
 	fmt.Println("Loaded .ionapi file with the following values:")
@@ -72,11 +85,32 @@ func loadIonAPI(filePath string) (*IonAPI, error) {
 	}
 
 	// Check if required fields are present
-	if ionAPI.ClientID == "" || ionAPI.ClientSecret == "" || ionAPI.TokenBaseURL == "" || ionAPI.TokenPath == "" || ionAPI.Username == "" || ionAPI.Password == "" {
-		return nil, fmt.Errorf("the .ionapi file is missing one or more required fields (ci, cs, pu, ot, saak, sask)")
+	if ionAPI.ClientID == "" || ionAPI.ClientSecret == "" || ionAPI.TokenBaseURL == "" || ionAPI.TokenPath == "" || ionAPI.Username == "" || ionAPI.Password == "" || ionAPI.IonBaseURL == "" {
+		return nil, fmt.Errorf("the .ionapi file is missing one or more required fields (ci, cs, pu, ot, saak, sask, iu)")
 	}
 
 	return &ionAPI, nil
+}
+
+// checkConnectivity checks if the application can connect to the provided URL
+func checkConnectivity(url string, serviceName string) bool {
+	client := &http.Client{
+		Timeout: 5 * time.Second, // Set a timeout of 5 seconds
+	}
+	req, err := http.NewRequest("HEAD", url, nil)
+	if err != nil {
+		log.Printf("❌ Failed to create request for %s: %v", serviceName, err)
+		return false
+	}
+
+	resp, err := client.Do(req)
+	if err != nil || resp.StatusCode < 200 || resp.StatusCode >= 400 {
+		log.Printf("❌ Cannot reach %s. Error: %v, Status Code: %d", serviceName, err, resp.StatusCode)
+		return false
+	}
+
+	log.Printf("✅ Successfully connected to %s (%s)", serviceName, url)
+	return true
 }
 
 // getAccessToken sends the HTTP request to get the access token
