@@ -35,15 +35,17 @@ The `.ionapi` file is a JSON file that contains the service account credentials 
   "sask": "Your-Service-Account-Secret-Key"
 }
 ```
-	•	ci: Client ID
-	•	cs: Client Secret
-	•	iu: Base URL for calling the ION API Gateway
-	•	pu: Base URL for calling the authorization server
-	•	ot: Path for accessing tokens (combined with pu)
-	•	saak: Service Account Access Key (used as username)
-	•	sask: Service Account Secret Key (used as password)
 
-Step 2: Build or Download the Binary
+
+•	ci: Client ID
+•	cs: Client Secret
+•	iu: Base URL for calling the ION API Gateway
+•	pu: Base URL for calling the authorization server
+•	ot: Path for accessing tokens (combined with pu)
+•	saak: Service Account Access Key (used as username)
+•	sask: Service Account Secret Key (used as password)
+
+### Step 2: Build or Download the Binary
 
 Option 1: Download Pre-Built Binaries (Recommended)
 
