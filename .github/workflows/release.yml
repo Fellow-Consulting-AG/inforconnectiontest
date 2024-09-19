@@ -1,0 +1,81 @@
+name: Build and Release Go App
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  build:
+    name: Build and Release Go App
+    runs-on: ubuntu-latest
+
+    steps:
+      # Checkout the repository
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      # Set up Go environment
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: '1.19' # Specify the version of Go you are using
+
+      # Install Git tools (for tagging)
+      - name: Install Git
+        run: sudo apt-get install git -y
+
+      # Determine the next version
+      - name: Determine version
+        id: versioning
+        run: |
+          latest_tag=$(git describe --tags --abbrev=0 || echo "v0.0.0")
+          echo "Latest tag: $latest_tag"
+          # Strip "v" prefix and increment the patch number
+          version=$(echo $latest_tag | awk -F. '{$NF += 1;} 1' | sed 's/ /./g')
+          new_tag="v$version"
+          echo "New version: $new_tag"
+          echo "new_tag=$new_tag" >> $GITHUB_ENV
+
+      # Build the Go app for macOS
+      - name: Build macOS binary
+        run: |
+          GOOS=darwin GOARCH=amd64 go build -o Infor-test-mac
+
+      # Build the Go app for Windows
+      - name: Build Windows binary
+        run: |
+          GOOS=windows GOARCH=amd64 go build -o Infor-test-windows.exe
+
+      # Create a GitHub release
+      - name: Create Release
+        id: create_release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ env.new_tag }}
+          release_name: Release ${{ env.new_tag }}
+          draft: false
+          prerelease: false
+
+      # Upload the binaries to the release
+      - name: Upload macOS binary
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: ./Infor-test-mac
+          asset_name: Infor-test-mac
+          asset_content_type: application/octet-stream
+
+      - name: Upload Windows binary
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: ./Infor-test-windows.exe
+          asset_name: Infor-test-windows.exe
+          asset_content_type: application/octet-stream
