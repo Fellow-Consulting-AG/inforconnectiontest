@@ -3,8 +3,10 @@ package main
 import (
 	"crypto/tls"
 	"fmt"
+	"io/ioutil"
 	"log"
 	"net"
+	"net/http"
 	"net/url"
 	"os"
 	"strings"
@@ -42,6 +44,50 @@ func checkDNSResolution(rawURL string) error {
 		return nil                                                          // Return nil to continue program execution
 	}
 	logger.Printf("✅ DNS Resolution successful for %s", hostname)
+	return nil
+}
+func makeHTTPRequest(method, url, body string) error {
+	client := &http.Client{}
+
+	// Create a new HTTP request (e.g., POST, GET)
+	req, err := http.NewRequest(method, url, strings.NewReader(body))
+	if err != nil {
+		return fmt.Errorf("Failed to create HTTP request: %v", err)
+	}
+
+	// Add headers (e.g., Content-Type, Authorization) if needed
+	req.Header.Add("Content-Type", "application/json")
+
+	// Execute the request
+	resp, err := client.Do(req)
+	if err != nil {
+		logger.Printf("❌ Error making HTTP request to %s: %v", url, err)
+		return err
+	}
+	defer resp.Body.Close()
+
+	// Check for 405 Method Not Allowed
+	if resp.StatusCode == http.StatusMethodNotAllowed {
+		allowedMethods := resp.Header.Get("Allow")
+		logger.Printf("⚠️ 405 Method Not Allowed for URL: %s", url)
+		logger.Printf("   HTTP Method used: %s", method)
+		logger.Printf("   Allowed Methods: %s", allowedMethods)
+
+		// Log the response body for further debugging
+		bodyBytes, _ := ioutil.ReadAll(resp.Body)
+		logger.Printf("   Response Body: %s", string(bodyBytes))
+		return fmt.Errorf("405 Method Not Allowed: HTTP method %s is not allowed for URL %s", method, url)
+	}
+
+	// Log other status codes if needed
+	if resp.StatusCode != http.StatusOK {
+		logger.Printf("⚠️ Unexpected response: %d for URL %s", resp.StatusCode, url)
+		bodyBytes, _ := ioutil.ReadAll(resp.Body)
+		logger.Printf("   Response Body: %s", string(bodyBytes))
+	} else {
+		logger.Printf("✅ Request successful to %s", url)
+	}
+
 	return nil
 }
 
@@ -88,14 +134,27 @@ func checkNetworkConnectivity(rawURL, defaultPort string) error {
 func checkSSLCertificate(rawURL, port string) error {
 	hostname, err := removeProtocol(rawURL) // Remove https:// or http:// from the URL
 	if err != nil {
-		logger.Printf("⚠️ SSL Check failed: could not parse URL %s: %v", rawURL, err) // Log the error but don't stop execution
+		logger.Printf("⚠️ SSL Check failed: could not parse URL %s: %v", rawURL, err)
 		return nil
 	}
-	logger.Printf("🔍 Checking SSL/TLS certificate for %s", hostname)
-	address := fmt.Sprintf("%s:%s", hostname, port)
+
+	// Check if hostname contains a port, and split if necessary
+	host, extractedPort, err := net.SplitHostPort(hostname)
+	if err != nil {
+		if strings.Contains(err.Error(), "missing port in address") {
+			host = hostname
+			extractedPort = port // Default to provided port if no port is found
+		} else {
+			return fmt.Errorf("failed to parse hostname and port: %v", err)
+		}
+	}
+
+	logger.Printf("🔍 Checking SSL/TLS certificate for %s on port %s", host, extractedPort)
+
+	address := fmt.Sprintf("%s:%s", host, extractedPort)
 	conn, err := tls.Dial("tcp", address, &tls.Config{})
 	if err != nil {
-		logger.Printf("⚠️ SSL/TLS connection failed for %s: %v", hostname, err) // Log the error but don't stop execution
+		logger.Printf("⚠️ SSL/TLS connection failed for %s: %v", host, err)
 		return nil
 	}
 	defer conn.Close()
