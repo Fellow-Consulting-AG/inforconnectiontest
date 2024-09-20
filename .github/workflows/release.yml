@@ -19,7 +19,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v4
         with:
-          go-version: '1.19' # Specify the version of Go you are using
+          go-version: '1.19'
 
       # Install Git tools (for tagging)
       - name: Install Git
@@ -29,8 +29,9 @@ jobs:
       - name: Generate version with commit hash
         id: versioning
         run: |
-          # Generate version based on the latest tag, commit hash, and current time
+          # Get the latest tag or set default if no tags exist
           latest_tag=$(git describe --tags --abbrev=0 || echo "v1.0.0")
+          # Append the timestamp to create a unique tag
           timestamp=$(date +'%Y%m%d%H%M%S')
           new_tag="${latest_tag}-${timestamp}"
           echo "New version: $new_tag"

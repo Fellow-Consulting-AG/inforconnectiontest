@@ -1,12 +1,108 @@
 package main
 
 import (
+	"crypto/tls"
+	"fmt"
 	"log"
+	"net"
+	"net/url"
 	"os"
+	"time"
 )
 
 var debugMode bool = false
 var checkM3 bool = false
+
+// Define log file
+const logFile = "infor-test.log"
+
+// Create a custom logger that logs to both a file and stdout
+var logger *log.Logger
+
+func init() {
+	file, err := os.OpenFile(logFile, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
+	if err != nil {
+		log.Fatalf("Failed to open log file: %v", err)
+	}
+	logger = log.New(file, "", log.LstdFlags)
+	logger.SetOutput(os.Stdout)
+}
+
+// Updated checkDNSResolution to remove protocol
+func checkDNSResolution(rawURL string) error {
+	hostname, err := removeProtocol(rawURL)
+	if err != nil {
+		return fmt.Errorf("failed to parse URL: %v", err)
+	}
+	logger.Printf("🔍 Performing DNS resolution for %s", hostname)
+	_, err = net.LookupHost(hostname)
+	return err
+}
+
+// Updated checkNetworkConnectivity to remove protocol
+func checkNetworkConnectivity(rawURL, port string) error {
+	hostname, err := removeProtocol(rawURL) // Remove https:// or http:// from the URL
+	if err != nil {
+		return fmt.Errorf("failed to parse URL: %v", err)
+	}
+	logger.Printf("🔍 Performing network connectivity check to %s on port %s", hostname, port)
+	address := fmt.Sprintf("%s:%s", hostname, port)
+	conn, err := net.DialTimeout("tcp", address, 5*time.Second)
+	if err != nil {
+		return err
+	}
+	defer conn.Close()
+	return nil
+}
+
+// Updated checkSSLCertificate to remove protocol
+func checkSSLCertificate(rawURL, port string) error {
+	hostname, err := removeProtocol(rawURL) // Remove https:// or http:// from the URL
+	if err != nil {
+		return fmt.Errorf("failed to parse URL: %v", err)
+	}
+	logger.Printf("🔍 Checking SSL/TLS certificate for %s", hostname)
+	address := fmt.Sprintf("%s:%s", hostname, port)
+	conn, err := tls.Dial("tcp", address, &tls.Config{})
+	if err != nil {
+		return err
+	}
+	defer conn.Close()
+
+	// Extract the certificate chain
+	certs := conn.ConnectionState().PeerCertificates
+	for _, cert := range certs {
+		if time.Now().After(cert.NotAfter) {
+			return fmt.Errorf("certificate expired on %v", cert.NotAfter)
+		}
+		if time.Now().Before(cert.NotBefore) {
+			return fmt.Errorf("certificate not valid before %v", cert.NotBefore)
+		}
+		logger.Printf("✅ Certificate for %s is valid (Valid from %v to %v)", cert.Subject.CommonName, cert.NotBefore, cert.NotAfter)
+	}
+	return nil
+}
+
+// extractPortFromURL extracts the port from the given URL
+func extractPortFromURL(url string) string {
+	host, port, err := net.SplitHostPort(url)
+	if err != nil {
+		// Check if URL contains default port (443 or none)
+		if port == "" && (host == "443" || err != nil) {
+			return "443" // Default to port 443 if none provided
+		}
+	}
+	return port
+}
+
+// Remove the protocol (http:// or https://) from the URL
+func removeProtocol(rawURL string) (string, error) {
+	parsedURL, err := url.Parse(rawURL)
+	if err != nil {
+		return "", err
+	}
+	return parsedURL.Host, nil
+}
 
 func main() {
 	args := os.Args[1:]
@@ -45,12 +141,34 @@ func main() {
 	debugPrint("Username (SAAK): %s", ionAPI.Username)
 	debugPrint("Password (SASK): %s", ionAPI.Password)
 
-	// Check connectivity to ION API Gateway
-	if checkConnectivity(ionAPI.IonBaseURL, "ION API Gateway") {
-		log.Printf("✅ Successfully connected to ION API Gateway (%s)\n", ionAPI.IonBaseURL)
+	// Perform DNS resolution check for ION Base URL
+	if err := checkDNSResolution(ionAPI.IonBaseURL); err != nil {
+		log.Fatalf("❌ DNS Resolution failed for %s: %v", ionAPI.IonBaseURL, err)
 	} else {
-		log.Fatalf("❌ Failed to connect to ION API Gateway (%s)\n", ionAPI.IonBaseURL)
+		log.Printf("✅ DNS Resolution successful for %s", ionAPI.IonBaseURL)
 	}
+
+	// Extract the port from the Authorization Server URL (pu)
+	port := extractPortFromURL(ionAPI.TokenBaseURL)
+	if port == "" {
+		port = "443" // Default to 443 if no port is provided
+	}
+
+	// Perform Network Connectivity check for ION Base URL
+	if err := checkNetworkConnectivity(ionAPI.IonBaseURL, port); err != nil {
+		logger.Fatalf("❌ Network Connectivity check failed: %v", err)
+	} else {
+		logger.Printf("✅ Network Connectivity successful to %s on port %s", ionAPI.IonBaseURL, port)
+	}
+
+	// Perform SSL/TLS Certificate check
+	if err := checkSSLCertificate(ionAPI.IonBaseURL, port); err != nil {
+		logger.Printf("⚠️ Warning: SSL Certificate check failed: %v", err) // Only warn, do not stop
+	} else {
+		logger.Printf("✅ SSL Certificate valid for %s", ionAPI.IonBaseURL)
+	}
+
+	// Proceed with the rest of the program (e.g., obtaining access tokens, etc.)
 
 	// Check connectivity to Authorization Server (use the full token URL)
 	tokenURL := ionAPI.GetTokenURL() // Use the full URL for checking connectivity
