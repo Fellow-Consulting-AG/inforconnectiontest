@@ -25,15 +25,60 @@ jobs:
       - name: Install Git
         run: sudo apt-get install git -y
 
-      # Determine the next version with timestamp or commit hash
-      - name: Generate version with commit hash
+      # Determine the next semantic version
+      - name: Generate semantic version
         id: versioning
         run: |
+          # Fetch all tags
+          git fetch --tags
+
           # Get the latest tag or set default if no tags exist
-          latest_tag=$(git describe --tags --abbrev=0 || echo "v1.0.0")
-          # Append the timestamp to create a unique tag
-          timestamp=$(date +'%Y%m%d%H%M%S')
-          new_tag="${latest_tag}-${timestamp}"
+          latest_tag=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0")
+          echo "Latest tag: $latest_tag"
+
+          # Remove 'v' prefix and split into components
+          latest_version=${latest_tag#v}
+          IFS='.' read -r major minor patch <<< "$latest_version"
+
+          # Get commit messages since the latest tag
+          if [ "$latest_tag" = "v0.0.0" ]; then
+            commit_messages=$(git log --oneline)
+          else
+            commit_messages=$(git log "${latest_tag}"..HEAD --oneline)
+          fi
+
+          # Initialize variables to track version bumps
+          major_bump=false
+          minor_bump=false
+          patch_bump=false
+
+          # Check commit messages for version bump keywords
+          while read -r line; do
+            message=$(echo "$line" | cut -d' ' -f2-)
+            if echo "$message" | grep -q "BREAKING CHANGE"; then
+              major_bump=true
+              break  # Breaking changes override other bumps
+            elif echo "$message" | grep -qi "^feat"; then
+              minor_bump=true
+            elif echo "$message" | grep -qi "^fix"; then
+              patch_bump=true
+            fi
+          done <<< "$commit_messages"
+
+          # Determine which version number to increment
+          if [ "$major_bump" = true ]; then
+            major=$((major + 1))
+            minor=0
+            patch=0
+          elif [ "$minor_bump" = true ]; then
+            minor=$((minor + 1))
+            patch=0
+          else
+            patch=$((patch + 1))
+          fi
+
+          # Construct the new tag
+          new_tag="v$major.$minor.$patch"
           echo "New version: $new_tag"
           echo "new_tag=$new_tag" >> $GITHUB_ENV
 
