@@ -7,6 +7,7 @@ import (
 	"net"
 	"net/url"
 	"os"
+	"strings"
 	"time"
 )
 
@@ -36,22 +37,50 @@ func checkDNSResolution(rawURL string) error {
 	}
 	logger.Printf("🔍 Performing DNS resolution for %s", hostname)
 	_, err = net.LookupHost(hostname)
-	return err
+	if err != nil {
+		logger.Printf("⚠️ DNS Resolution failed for %s: %v", hostname, err) // Log the error but don't stop execution
+		return nil                                                          // Return nil to continue program execution
+	}
+	logger.Printf("✅ DNS Resolution successful for %s", hostname)
+	return nil
 }
 
 // Updated checkNetworkConnectivity to remove protocol
-func checkNetworkConnectivity(rawURL, port string) error {
+func checkNetworkConnectivity(rawURL, defaultPort string) error {
 	hostname, err := removeProtocol(rawURL) // Remove https:// or http:// from the URL
 	if err != nil {
 		return fmt.Errorf("failed to parse URL: %v", err)
 	}
-	logger.Printf("🔍 Performing network connectivity check to %s on port %s", hostname, port)
-	address := fmt.Sprintf("%s:%s", hostname, port)
+
+	// Check if hostname was extracted correctly
+	if hostname == "" {
+		logger.Printf("⚠️ Hostname extraction failed for URL: %s", rawURL) // Log the error but don't stop execution
+		return nil                                                         // Return nil to continue program execution
+	}
+
+	logger.Printf("✅ Hostname extracted: %s", hostname)
+
+	// Check if the hostname includes a port
+	host, port, err := net.SplitHostPort(hostname)
+	if err != nil {
+		if strings.Contains(err.Error(), "missing port in address") {
+			port = defaultPort // Use default port if no port is provided
+			host = hostname    // If no port is found, hostname is just the host
+		} else {
+			logger.Printf("⚠️ Failed to split host and port: %v", err) // Log the error but don't stop execution
+			return nil                                                 // Return nil to continue program execution
+		}
+	}
+
+	logger.Printf("🔍 Performing network connectivity check to %s on port %s", host, port)
+	address := fmt.Sprintf("%s:%s", host, port)
 	conn, err := net.DialTimeout("tcp", address, 5*time.Second)
 	if err != nil {
-		return err
+		logger.Printf("⚠️ Network Connectivity check failed for %s on port %s: %v", host, port, err) // Log the error but don't stop execution
+		return nil                                                                                   // Return nil to continue program execution
 	}
 	defer conn.Close()
+	logger.Printf("✅ Network Connectivity successful to %s on port %s", host, port)
 	return nil
 }
 
@@ -59,13 +88,15 @@ func checkNetworkConnectivity(rawURL, port string) error {
 func checkSSLCertificate(rawURL, port string) error {
 	hostname, err := removeProtocol(rawURL) // Remove https:// or http:// from the URL
 	if err != nil {
-		return fmt.Errorf("failed to parse URL: %v", err)
+		logger.Printf("⚠️ SSL Check failed: could not parse URL %s: %v", rawURL, err) // Log the error but don't stop execution
+		return nil
 	}
 	logger.Printf("🔍 Checking SSL/TLS certificate for %s", hostname)
 	address := fmt.Sprintf("%s:%s", hostname, port)
 	conn, err := tls.Dial("tcp", address, &tls.Config{})
 	if err != nil {
-		return err
+		logger.Printf("⚠️ SSL/TLS connection failed for %s: %v", hostname, err) // Log the error but don't stop execution
+		return nil
 	}
 	defer conn.Close()
 
@@ -73,10 +104,12 @@ func checkSSLCertificate(rawURL, port string) error {
 	certs := conn.ConnectionState().PeerCertificates
 	for _, cert := range certs {
 		if time.Now().After(cert.NotAfter) {
-			return fmt.Errorf("certificate expired on %v", cert.NotAfter)
+			logger.Printf("⚠️ Certificate expired on %v", cert.NotAfter)
+			return nil
 		}
 		if time.Now().Before(cert.NotBefore) {
-			return fmt.Errorf("certificate not valid before %v", cert.NotBefore)
+			logger.Printf("⚠️ Certificate not valid before %v", cert.NotBefore)
+			return nil
 		}
 		logger.Printf("✅ Certificate for %s is valid (Valid from %v to %v)", cert.Subject.CommonName, cert.NotBefore, cert.NotAfter)
 	}
@@ -95,12 +128,14 @@ func extractPortFromURL(url string) string {
 	return port
 }
 
-// Remove the protocol (http:// or https://) from the URL
+// Remove the protocol (http:// or https://) from the URL and return only the hostname
 func removeProtocol(rawURL string) (string, error) {
 	parsedURL, err := url.Parse(rawURL)
 	if err != nil {
 		return "", err
 	}
+
+	// Return only the host (this excludes the protocol)
 	return parsedURL.Host, nil
 }
 
